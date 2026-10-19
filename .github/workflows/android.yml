@@ -4,6 +4,7 @@ on:
     paths-ignore: ['**/*.md']
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
@@ -18,6 +19,8 @@ jobs:
       OMNIFEED_LOCAL_HTTP: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -30,9 +33,30 @@ jobs:
           packages: platform-tools
       - run: npm ci
       - run: npm run build:api
+      # Reuse the already compiled APK only when every app/API input and native build setting matches.
+      # Missing/expired artifacts fall back to a fresh native build.
+      - name: Check identical APK inputs
+        id: reuse
+        shell: bash
+        run: |
+          if git diff --quiet 803618d62aa996fd0c39ee2e5f4da205205b2939 HEAD -- apps packages package.json package-lock.json scripts/provider-fixtures.cjs; then
+            git show 803618d62aa996fd0c39ee2e5f4da205205b2939:.github/workflows/android.yml > /tmp/apk-source-workflow.yml
+            python scripts/check-apk-settings.py /tmp/apk-source-workflow.yml .github/workflows/android.yml >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        id: apk
+        if: steps.reuse.outputs.identical == 'true'
+        continue-on-error: true
+        with:
+          github-token: ${{ github.token }}
+          run-id: 39203777090
+          name: android-smoke-evidence
+          path: .
       - run: npx expo prebuild --platform android --no-install
+        if: steps.apk.outcome != 'success' 
         working-directory: apps/mobile
       - run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,x86_64
+        if: steps.apk.outcome != 'success'
         working-directory: apps/mobile/android
       - name: Enable KVM
         run: |

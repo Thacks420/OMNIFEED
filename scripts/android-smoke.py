@@ -54,7 +54,7 @@ else:
     raise AssertionError('Load more control was not reachable')
 for _ in range(25):
     root = snapshot()
-    if 'Fixture reddit 25' in text(root): break
+    if any(int(index) >= 25 for index in re.findall(r'Fixture reddit (\d+)', text(root))): break
     adb('shell', 'input', 'swipe', '500', '1600', '500', '500', '150')
 else:
     raise AssertionError('Second page was not displayed')
