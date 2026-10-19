@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "OmniFeed",
+    "slug": "omnifeed",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "app.omnifeed.mobile"
+    }
+  }
+}
