@@ -29,4 +29,5 @@ export interface OmniPost {
 export interface FeedResponse {
   items: OmniPost[];
   nextCursor: string | null;
+  warnings?: { platform: Platform; message: string }[];
 }

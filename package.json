@@ -12,7 +12,8 @@
     "build:api": "npm run build:core && npm run build --workspace=@omnifeed/api",
     "typecheck": "npm run build:core && npm run typecheck --workspaces --if-present",
     "test": "node --experimental-transform-types --test apps/api/test/*.test.mjs",
-    "build:core": "npm run build --workspace=@omnifeed/core"
+    "build:core": "npm run build --workspace=@omnifeed/core",
+    "test:api": "node --test apps/api/test/runtime.test.cjs"
   },
   "engines": {
     "node": ">=22.13.0"

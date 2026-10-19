@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Pressable,
   SafeAreaView,
   StatusBar,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import type { OmniPost, Platform } from '@omnifeed/core';
-import { requestFeed } from './feed-client';
+import { FeedClientError, requestFeed } from './feed-client';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3000';
 const tabs: Array<{ label: string; value?: Platform }> = [
@@ -65,6 +66,9 @@ function PostCard({ post }: { post: OmniPost }) {
       <Text style={styles.author}>{post.author.handle ?? post.author.name}</Text>
       {!!post.title && <Text style={styles.title}>{post.title}</Text>}
       <Text style={styles.body}>{post.text}</Text>
+      <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(post.originalUrl).catch(() => {}); }}>
+        <Text style={styles.platform}>Open original ↗</Text>
+      </Pressable>
       <View style={styles.stats}>
         <Text style={styles.stat}>♥ {compact(post.stats.likes)}</Text>
         <Text style={styles.stat}>💬 {compact(post.stats.comments)}</Text>
@@ -80,6 +84,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [offlineDemo, setOfflineDemo] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   const busy = useRef(false);
@@ -94,6 +99,7 @@ export default function App() {
     busy.current = true;
     setLoading(true);
     setError(null);
+    setWarnings([]);
     if (!cursor) { setPosts([]); setNextCursor(null); setOfflineDemo(false); }
     const timeout = setTimeout(() => controller.abort(), 20_000);
     try {
@@ -103,10 +109,12 @@ export default function App() {
         ? [...new Map([...previous, ...data.items].map(p => [p.id, p])).values()]
         : data.items);
       setNextCursor(data.nextCursor);
+      setWarnings((data.warnings ?? []).map(w => `${w.platform}: ${w.message}`));
       setOfflineDemo(false);
     } catch (error) {
       if (generation.current !== current) return;
       setError(error instanceof Error ? error.message : 'Unable to connect to API');
+      if (error instanceof FeedClientError && error.status === 410) setNextCursor(null);
       if (!cursor) {
         setPosts(platform ? fallbackPosts.filter(p => p.platform === platform) : fallbackPosts);
         setOfflineDemo(true);
@@ -130,7 +138,7 @@ export default function App() {
           <Text style={styles.logo}>OmniFeed</Text>
           <Text style={styles.subtitle}>One feed. Your algorithm.</Text>
         </View>
-        <View style={[styles.statusDot, offlineDemo ? styles.statusDemo : styles.statusLive]} />
+        <Text style={styles.stat}>{loading ? 'Connecting…' : offlineDemo ? 'Demo' : warnings.length ? 'Partial feed' : 'Connected'}</Text>
       </View>
 
       <View style={styles.tabs}>
@@ -138,6 +146,8 @@ export default function App() {
           const active = tab.value === platform;
           return (
             <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
               key={tab.label}
               onPress={() => setPlatform(tab.value)}
               style={[styles.tab, active && styles.tabActive]}
@@ -153,6 +163,12 @@ export default function App() {
       )}
 
       {error && <Text style={styles.demoBanner}>{error}</Text>}
+      {warnings.map(w => <Text key={w} style={styles.demoBanner}>{w}</Text>)}
+      {error && !loading && !nextCursor && (
+        <Pressable style={styles.tab} accessibilityRole="button" onPress={() => void loadPage()}>
+          <Text style={styles.tabText}>Refresh feed</Text>
+        </Pressable>
+      )}
 
       <FlatList
         data={posts}

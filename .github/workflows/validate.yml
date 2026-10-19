@@ -24,6 +24,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build:api
+      - run: npm run test:api
       - run: npx expo export --platform android --output-dir dist-android
         working-directory: apps/mobile
       - uses: actions/upload-artifact@v4
