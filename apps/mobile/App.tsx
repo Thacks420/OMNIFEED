@@ -4,12 +4,12 @@ import {
   FlatList,
   Linking,
   Pressable,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import type { OmniPost, Platform } from '@omnifeed/core';
 import { FeedClientError, requestFeed } from './feed-client';
 
@@ -131,6 +131,7 @@ export default function App() {
   }, [platform]);
 
   return (
+    <SafeAreaProvider>
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
@@ -185,6 +186,7 @@ export default function App() {
         contentContainerStyle={styles.list}
       />
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

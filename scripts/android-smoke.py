@@ -33,7 +33,12 @@ apk = next(pathlib.Path('apps/mobile/android/app/build/outputs/apk/release').glo
 adb('install', '-r', str(apk))
 adb('logcat', '-c')
 adb('shell', 'am', 'start', '-n', 'app.omnifeed.mobile/.MainActivity')
-wait_for('Fixture')
+root = wait_for('Fixture')
+# Status-bar content must not overlap the app header on edge-to-edge Android.
+header = next(n for n in root.iter() if n.get('text') == 'OmniFeed')
+header_top = int(re.findall(r'\d+', header.get('bounds'))[1])
+status_height = 60  # Pixel 6 Android 35 fixture: status-bar inset exceeds 60 physical px
+assert header_top >= status_height, f'Header overlaps status bar: {header_top} < {status_height}'
 tap('YouTube')
 wait_for('Fixture youtube')
 tap('Reddit')
