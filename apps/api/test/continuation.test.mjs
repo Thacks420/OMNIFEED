@@ -100,3 +100,19 @@ test('a cursor rejects page-size changes and empty or oversized parameters', asy
   await assert.rejects(engine.getFeed({ cursor: '' }), { status: 400 });
   await assert.rejects(engine.getFeed({ query: 'a'.repeat(2049) }), { status: 400 });
 });
+
+test('equal timestamps across upstream page boundaries do not discard unseen IDs', async () => {
+  const reddit = source('reddit', 130), fetch = reddit.fetch;
+  reddit.fetch = async o => {
+    const page = await fetch(o);
+    page.items.forEach(p => p.createdAt = new Date(now() - 1000).toISOString());
+    return page;
+  };
+  const engine = new FeedEngine([reddit], now);
+  const ids = []; let cursor;
+  do {
+    const page = await engine.getFeed({ limit: 25, cursor });
+    ids.push(...page.items.map(p => p.id)); cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  assert.equal(new Set(ids).size, 130);
+});

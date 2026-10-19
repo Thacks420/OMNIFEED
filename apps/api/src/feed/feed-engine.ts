@@ -100,13 +100,13 @@ export class FeedEngine {
           source.buffer = result.items.filter(p => p.platform === source.platform
             && Number.isFinite(Date.parse(p.createdAt)) && Date.parse(p.createdAt) <= Date.parse(session.before)
             && !seen.has(`${p.platform}:${p.id}`)
-            && (!session.last || compare(session.last, p) <= 0)).sort(compare);
+            && (!session.last || Date.parse(p.createdAt) <= Date.parse(session.last.createdAt))).sort(compare);
           if (!result.nextCursor) source.done = true;
           else if (source.tokens.includes(result.nextCursor)) { source.done = true; source.failed = true; }
           else { source.cursor = result.nextCursor; source.tokens.push(result.nextCursor); }
         } catch { source.failed = true; }
       }));
-      if (session.sources.every(s => s.failed) && !items.length)
+      if (session.sources.every(s => s.failed && !s.buffer.length) && !items.length)
         throw new FeedError(503, 'Feed sources are unavailable; check server configuration or retry');
       // Do not emit older items while a healthy source still needs its head page.
       if (session.sources.some(s => !s.buffer.length && !s.done && !s.failed)) continue;
@@ -115,15 +115,13 @@ export class FeedEngine {
       const item = available[0].buffer.shift()!;
       const identity = `${item.platform}:${item.id}`;
       if (seen.has(identity)) continue;
-      if (session.last && compare(session.last, item) > 0) continue;
+      if (session.last && Date.parse(item.createdAt) > Date.parse(session.last.createdAt)) continue;
       items.push(item); seen.add(identity); session.last = item;
     }
-    if (rounds > 100 && !items.length) throw new FeedError(503, 'Sources made no progress; retry or refresh');
+    if (rounds > 100) throw new FeedError(503, 'Sources made no progress; retry or refresh');
     session.seen = [...seen]; session.offset = offset + items.length;
     const more = session.sources.some(s => s.buffer.length || (!s.done && !s.failed));
     const response: FeedResponse = { items, nextCursor: more ? `v2.${id}.${session.offset}` : null };
-    // Partial pages cannot be resumed with the fixed page size; continue filling next time by refreshing.
-    if (items.length < session.limit) response.nextCursor = null;
     const failed = session.sources.filter(s => s.failed).map(s => s.platform);
     if (failed.length) response.warnings = failed.map(platform => ({ platform, message: 'Source unavailable for this feed. Refresh to retry.' }));
     session.pages[String(offset)] = response;

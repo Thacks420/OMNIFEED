@@ -99,7 +99,7 @@ export default function App() {
     busy.current = true;
     setLoading(true);
     setError(null);
-    setWarnings([]);
+    if (!cursor) setWarnings([]);
     if (!cursor) { setPosts([]); setNextCursor(null); setOfflineDemo(false); }
     const timeout = setTimeout(() => controller.abort(), 20_000);
     try {
@@ -138,7 +138,7 @@ export default function App() {
           <Text style={styles.logo}>OmniFeed</Text>
           <Text style={styles.subtitle}>One feed. Your algorithm.</Text>
         </View>
-        <Text style={styles.stat}>{loading ? 'Connecting…' : offlineDemo ? 'Demo' : warnings.length ? 'Partial feed' : 'Connected'}</Text>
+        <Text style={styles.stat}>{loading ? 'Connecting…' : offlineDemo ? 'Demo' : error ? 'Connection error' : warnings.length ? 'Partial feed' : 'Connected'}</Text>
       </View>
 
       <View style={styles.tabs}>
