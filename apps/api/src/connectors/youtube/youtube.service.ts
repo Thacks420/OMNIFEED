@@ -191,8 +191,8 @@ export class YouTubeService {
   }
 
   private safeDate(value?: string): string {
-    const date = value ? new Date(value) : new Date(0);
-    return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
+    const date = value ? new Date(value) : new Date(NaN);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
   }
 
   private clampLimit(value: number): number {

@@ -1,7 +1,5 @@
 name: Android runtime smoke
 on:
-  push:
-    branches: ['codex/**']
   pull_request:
 permissions:
   contents: read
@@ -27,7 +25,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - run: npm install
+        with:
+          packages: platform-tools
+      - run: npm ci
       - run: npm run build:api
       - run: npx expo prebuild --platform android --no-install
         working-directory: apps/mobile
