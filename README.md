@@ -13,6 +13,7 @@ This is the v0.1 starter scaffold for an Android-first unified social feed.
 - Real YouTube Data API v3 connector
 - Platform tabs/filters
 - Mobile fallback demo data when API is offline
+- Stable snapshot pagination with load more, refresh, and retry
 
 ## Monorepo
 
@@ -93,15 +94,29 @@ Phone and PC must be on the same network for local API testing.
 - `GET /feed`
 - `GET /feed?platform=reddit`
 - `GET /feed?platform=reddit&subreddit=python`
-- `GET /feed?platform=reddit&subreddit=python&limit=25&cursor=t3_...`
+- `GET /feed?platform=reddit&subreddit=python&limit=25&cursor=OPAQUE_FEED_CURSOR`
 - `GET /feed?platform=youtube`
 - `GET /feed?platform=youtube&region=IN&limit=25`
 - `GET /feed?platform=youtube&query=python&region=IN`
-- `GET /feed?platform=youtube&cursor=YOUTUBE_PAGE_TOKEN`
+- `GET /feed?platform=youtube&cursor=OPAQUE_FEED_CURSOR`
 
-Reddit and YouTube responses are normalized into the shared `OmniPost` format. Platform-specific requests return the platform's native pagination token as `nextCursor`.
+Reddit and YouTube responses are normalized into the shared `OmniPost` format. Every feed uses the same opaque `nextCursor`; pass it back unchanged, with the same platform, subreddit, query, and region parameters. Native Reddit/YouTube tokens are no longer accepted. `limit` defaults to 25 and must be an integer from 1 to 50.
 
-The combined `GET /feed` currently merges whichever configured connectors succeed and sorts them by `createdAt`. Cross-platform cursor pagination is the next architecture milestone.
+Issue #3 first iteration uses a **bounded discovery snapshot**: fetch up to 50 posts per selected connector, deduplicate, sort descending by `createdAt` (ties by ID/platform), and paginate that immutable list. Reddit hot and YouTube mostPopular are ranked endpoints, so sorting individual upstream pages would not provide chronological pagination. This implementation guarantees chronological order only within the fetched snapshot, not across the provider's entire history. Refresh creates a new snapshot. Upstream continuation beyond this window is still future work.
+
+Snapshots expire after 10 minutes; at most 100 are retained in memory. Expiry, eviction, or server restart returns HTTP 410; refresh to restart. Cursors are process-local, so multi-instance deployments require sticky routing or a shared snapshot store. Invalid cursors/filters/limits return 400. One failing connector does not discard the successful connector's posts; all selected connectors failing returns 503. A partially failed snapshot stays fixed until refresh. X and Instagram currently return empty results and can be added through the `FeedConnector` interface without changing `FeedResponse`.
+
+### Checks
+
+```bash
+npm test
+npm run typecheck
+npm run build:api
+```
+
+`npm test` uses Node's experimental TypeScript transform and does not require npm dependencies. It covers the orchestration engine and the mobile HTTP client's flow through a real local HTTP test server with fixture connectors. It does not launch Nest, Metro, Expo Go, or an Android emulator.
+
+For Android: start the API and Expo, set the physical phone's LAN API URL above, and test All/Reddit/YouTube, Load more, pull-to-refresh, source outages, API-offline demo, and switching tabs during a request. Android emulator uses `http://10.0.2.2:3000`. The Expo entry is workspace-local `index.js`; shared core declarations are built before starting either app.
 
 ## Next milestone
 
