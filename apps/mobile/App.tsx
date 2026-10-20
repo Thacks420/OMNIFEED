@@ -1,15 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Pressable,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import type { FeedResponse, OmniPost, Platform } from '@omnifeed/core';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import type { OmniPost, Platform } from '@omnifeed/core';
+import { FeedClientError, requestFeed } from './feed-client';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3000';
 const tabs: Array<{ label: string; value?: Platform }> = [
@@ -64,6 +66,9 @@ function PostCard({ post }: { post: OmniPost }) {
       <Text style={styles.author}>{post.author.handle ?? post.author.name}</Text>
       {!!post.title && <Text style={styles.title}>{post.title}</Text>}
       <Text style={styles.body}>{post.text}</Text>
+      <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(post.originalUrl).catch(() => {}); }}>
+        <Text style={styles.platform}>Open original ↗</Text>
+      </Pressable>
       <View style={styles.stats}>
         <Text style={styles.stat}>♥ {compact(post.stats.likes)}</Text>
         <Text style={styles.stat}>💬 {compact(post.stats.comments)}</Text>
@@ -75,45 +80,58 @@ function PostCard({ post }: { post: OmniPost }) {
 
 export default function App() {
   const [platform, setPlatform] = useState<Platform | undefined>();
-  const [posts, setPosts] = useState<OmniPost[]>(fallbackPosts);
+  const [posts, setPosts] = useState<OmniPost[]>([]);
   const [loading, setLoading] = useState(false);
-  const [offlineDemo, setOfflineDemo] = useState(true);
+  const [offlineDemo, setOfflineDemo] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+  const busy = useRef(false);
+  const request = useRef<AbortController | null>(null);
 
-  const endpoint = useMemo(() => {
-    const suffix = platform ? `?platform=${platform}` : '';
-    return `${API_URL}/feed${suffix}`;
-  }, [platform]);
+  async function loadPage(cursor?: string) {
+    if (cursor && busy.current) return;
+    if (!cursor) request.current?.abort();
+    const current = cursor ? generation.current : ++generation.current;
+    const controller = new AbortController();
+    request.current = controller;
+    busy.current = true;
+    setLoading(true);
+    setError(null);
+    if (!cursor) setWarnings([]);
+    if (!cursor) { setPosts([]); setNextCursor(null); setOfflineDemo(false); }
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const data = await requestFeed(API_URL, { platform, cursor, signal: controller.signal });
+      if (generation.current !== current) return;
+      setPosts(previous => cursor
+        ? [...new Map([...previous, ...data.items].map(p => [p.id, p])).values()]
+        : data.items);
+      setNextCursor(data.nextCursor);
+      setWarnings((data.warnings ?? []).map(w => `${w.platform}: ${w.message}`));
+      setOfflineDemo(false);
+    } catch (error) {
+      if (generation.current !== current) return;
+      setError(error instanceof Error ? error.message : 'Unable to connect to API');
+      if (error instanceof FeedClientError && error.status === 410) setNextCursor(null);
+      if (!cursor) {
+        setPosts(platform ? fallbackPosts.filter(p => p.platform === platform) : fallbackPosts);
+        setOfflineDemo(true);
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (generation.current === current) { busy.current = false; setLoading(false); }
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-
-    fetch(endpoint)
-      .then((response) => {
-        if (!response.ok) throw new Error('API request failed');
-        return response.json() as Promise<FeedResponse>;
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setPosts(data.items);
-        setOfflineDemo(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        const filtered = platform
-          ? fallbackPosts.filter((post) => post.platform === platform)
-          : fallbackPosts;
-        setPosts(filtered);
-        setOfflineDemo(true);
-      })
-      .finally(() => !cancelled && setLoading(false));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [endpoint, platform]);
+    void loadPage();
+    return () => { ++generation.current; request.current?.abort(); busy.current = false; };
+  }, [platform]);
 
   return (
+    <SafeAreaProvider>
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
@@ -121,7 +139,7 @@ export default function App() {
           <Text style={styles.logo}>OmniFeed</Text>
           <Text style={styles.subtitle}>One feed. Your algorithm.</Text>
         </View>
-        <View style={[styles.statusDot, offlineDemo ? styles.statusDemo : styles.statusLive]} />
+        <Text style={styles.stat}>{loading ? 'Connecting…' : offlineDemo ? 'Demo' : error ? 'Connection error' : warnings.length ? 'Partial feed' : 'Connected'}</Text>
       </View>
 
       <View style={styles.tabs}>
@@ -129,6 +147,8 @@ export default function App() {
           const active = tab.value === platform;
           return (
             <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
               key={tab.label}
               onPress={() => setPlatform(tab.value)}
               style={[styles.tab, active && styles.tabActive]}
@@ -140,18 +160,33 @@ export default function App() {
       </View>
 
       {offlineDemo && (
-        <Text style={styles.demoBanner}>Demo feed • start the API to switch to live local data</Text>
+        <Text style={styles.demoBanner}>Offline demo • API connection unavailable</Text>
       )}
 
-      {loading && <ActivityIndicator style={styles.loader} />}
+      {error && <Text style={styles.demoBanner}>{error}</Text>}
+      {warnings.map(w => <Text key={w} style={styles.demoBanner}>{w}</Text>)}
+      {error && !loading && !nextCursor && (
+        <Pressable style={styles.tab} accessibilityRole="button" onPress={() => void loadPage()}>
+          <Text style={styles.tabText}>Refresh feed</Text>
+        </Pressable>
+      )}
 
       <FlatList
         data={posts}
+        refreshing={loading && !nextCursor}
+        onRefresh={() => void loadPage()}
+        ListEmptyComponent={!loading ? <Text style={styles.stat}>No posts available.</Text> : null}
+        ListFooterComponent={loading ? <ActivityIndicator style={styles.loader} /> : nextCursor ? (
+          <Pressable style={styles.tab} onPress={() => void loadPage(nextCursor)}>
+            <Text style={styles.tabText}>{error ? 'Retry loading more' : 'Load more'}</Text>
+          </Pressable>
+        ) : null}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <PostCard post={item} />}
         contentContainerStyle={styles.list}
       />
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

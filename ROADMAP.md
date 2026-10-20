@@ -6,8 +6,14 @@
 - [x] NestJS `/feed` endpoint
 - [x] Expo Android feed UI
 - [x] Reddit / YouTube filters
-- [ ] Real Reddit connector
-- [ ] Real YouTube connector
+- [x] Real Reddit connector
+- [x] Real YouTube connector
+
+- [x] Chronological native cursor orchestration
+- [x] Mobile pagination, refresh and error recovery
+- [x] Durable single-instance cursor sessions
+- [x] API and Android CI validation workflows
+- [ ] Live credential/device acceptance
 
 ## v0.2 — Accounts & Personalization
 - [ ] Authentication

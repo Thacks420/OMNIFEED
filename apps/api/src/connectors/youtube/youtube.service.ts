@@ -57,6 +57,7 @@ export class YouTubeService {
     limit?: number;
     query?: string;
     regionCode?: string;
+    before?: string;
   }): Promise<YouTubeFeedResult> {
     this.ensureConfigured();
 
@@ -64,51 +65,13 @@ export class YouTubeService {
     const regionCode = this.cleanRegion(options?.regionCode ?? this.defaultRegion);
     const query = options?.query?.trim();
 
-    if (query) {
-      return this.searchFeed({
-        query,
-        cursor: options?.cursor,
-        limit,
-        regionCode,
-      });
-    }
-
-    return this.mostPopularFeed({
-      cursor: options?.cursor,
-      limit,
-      regionCode,
-    });
-  }
-
-  private async mostPopularFeed(options: {
-    cursor?: string;
-    limit: number;
-    regionCode: string;
-  }): Promise<YouTubeFeedResult> {
-    const params = new URLSearchParams({
-      part: 'snippet,statistics',
-      chart: 'mostPopular',
-      maxResults: String(options.limit),
-      regionCode: options.regionCode,
-      key: this.apiKey!,
-    });
-
-    if (options.cursor) {
-      params.set('pageToken', options.cursor);
-    }
-
-    const response = await this.fetchJson<YouTubeVideoListResponse>(
-      `https://www.googleapis.com/youtube/v3/videos?${params.toString()}`,
-    );
-
-    return {
-      items: (response.items ?? []).map((item) => this.normalizeVideo(item)),
-      nextCursor: response.nextPageToken ?? null,
-    };
+    return this.searchFeed({ query: query ?? '', cursor: options?.cursor,
+      limit, regionCode, before: options?.before });
   }
 
   private async searchFeed(options: {
     query: string;
+    before?: string;
     cursor?: string;
     limit: number;
     regionCode: string;
@@ -117,10 +80,13 @@ export class YouTubeService {
       part: 'snippet',
       type: 'video',
       maxResults: String(options.limit),
-      q: options.query,
+      order: 'date',
       regionCode: options.regionCode,
       key: this.apiKey!,
     });
+
+    if (options.query) searchParams.set('q', options.query);
+    if (options.before) searchParams.set('publishedBefore', options.before);
 
     if (options.cursor) {
       searchParams.set('pageToken', options.cursor);
@@ -225,8 +191,8 @@ export class YouTubeService {
   }
 
   private safeDate(value?: string): string {
-    const date = value ? new Date(value) : new Date();
-    return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    const date = value ? new Date(value) : new Date(NaN);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
   }
 
   private clampLimit(value: number): number {

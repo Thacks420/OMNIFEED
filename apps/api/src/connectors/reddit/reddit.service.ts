@@ -76,7 +76,7 @@ export class RedditService {
       params.set('after', options.cursor);
     }
 
-    const endpoint = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/hot?${params.toString()}`;
+    const endpoint = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/new?${params.toString()}`;
 
     const response = await this.fetchWithTimeout(endpoint, {
       headers: {
